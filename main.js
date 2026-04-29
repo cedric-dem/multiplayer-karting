@@ -16,7 +16,7 @@ const cameras = {
     top: topCamera,
     follow: followCamera,
 };
-let activeCameraKey = 'top';
+let activeCameraKey = 'follow';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -31,9 +31,19 @@ keyLight.position.set(8, 12, 6);
 scene.add(keyLight);
 
 const loader = new GLTFLoader();
+const use_file_race_track = true;
+const trackCollisionMeshes = [];
+const downRay = new THREE.Raycaster();
+const moveRay = new THREE.Raycaster();
+const probeStart = new THREE.Vector3();
+const probeDirection = new THREE.Vector3();
 const kartRoot = new THREE.Group();
-kartRoot.position.set(0, 8, 0);
+kartRoot.position.set(102, 25, 113);
+// x=102.49, y=17.88, z=113.71
 scene.add(kartRoot);
+
+const log_pos = false
+var positionLogAccumulator = 0
 
 loader.load('models/go_kart.glb', (gltf) => {
     const kart = gltf.scene;
@@ -47,15 +57,38 @@ const offset = ((gridSize - 1) * cube_size) / 2;
 const cubeGeometry = new THREE.BoxGeometry(cube_size, cube_size, cube_size);
 const obstacles = [];
 
-for (let z = 0; z < gridSize; z += 1) {
-    for (let x = 0; x < gridSize; x += 1) {
-        const hue = ((z * gridSize) + x) / (gridSize * gridSize);
-        const color = new THREE.Color().setHSL(hue, 0.85, 0.55);
-        const cubeMaterial = new THREE.MeshStandardMaterial({ color, metalness: 0.05, roughness: 0.7 });
-        const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-        cube.position.set((x * cube_size) - offset, -0.5, (z * cube_size) - offset);
-        scene.add(cube);
-        obstacles.push(cube);
+if (use_file_race_track) {
+    loader.load('models/free_1992_spa_francorchamps.glb', (gltf) => {
+        const raceTrack = gltf.scene;
+        raceTrack.position.set(0, 0, 0);
+        raceTrack.scale.setScalar(0.1);
+        scene.add(raceTrack);
+
+        raceTrack.updateMatrixWorld(true);
+        raceTrack.traverse((child) => {
+            if (!child.isMesh) {
+                return;
+            }
+
+            const worldGeometry = child.geometry.clone();
+            worldGeometry.applyMatrix4(child.matrixWorld);
+            const worldMesh = new THREE.Mesh(worldGeometry);
+            worldMesh.geometry.computeBoundingBox();
+
+            trackCollisionMeshes.push(worldMesh);
+        });
+    });
+} else {
+    for (let z = 0; z < gridSize; z += 1) {
+        for (let x = 0; x < gridSize; x += 1) {
+            const hue = ((z * gridSize) + x) / (gridSize * gridSize);
+            const color = new THREE.Color().setHSL(hue, 0.85, 0.55);
+            const cubeMaterial = new THREE.MeshStandardMaterial({ color, metalness: 0.05, roughness: 0.7 });
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.set((x * cube_size) - offset, -0.5, (z * cube_size) - offset);
+            scene.add(cube);
+            obstacles.push(cube);
+        }
     }
 }
 
@@ -71,6 +104,9 @@ const controls = {
     right: false,
 };
 
+let godModeEnabled = false;
+const godModeSpeed = 8;
+
 let forwardSpeed = 0;
 const maxForwardSpeed = 8;
 const acceleration = 10;
@@ -79,6 +115,15 @@ const rollingDeceleration = 3;
 const turnSpeed = Math.PI * 1.4;
 
 const getSupportHeight = (position) => {
+    if (trackCollisionMeshes.length > 0) {
+        probeStart.set(position.x, position.y + 20, position.z);
+        downRay.set(probeStart, new THREE.Vector3(0, -1, 0));
+        const hits = downRay.intersectObjects(trackCollisionMeshes, false);
+        if (hits.length > 0) {
+            return hits[0].point.y;
+        }
+    }
+
     let supportHeight = -Infinity;
 
     obstacles.forEach((obstacle) => {
@@ -95,6 +140,38 @@ const getSupportHeight = (position) => {
     });
 
     return supportHeight;
+};
+
+const canMoveTo = (nextPosition) => {
+    if (trackCollisionMeshes.length === 0) {
+        return true;
+    }
+
+    probeDirection.subVectors(nextPosition, kartRoot.position);
+    const distance = probeDirection.length();
+    if (distance <= 0.0001) {
+        return true;
+    }
+
+    probeDirection.normalize();
+    probeStart.copy(kartRoot.position);
+    probeStart.y += 0.45;
+
+    moveRay.set(probeStart, probeDirection);
+    moveRay.far = distance + kartRadiusXZ;
+
+    const hits = moveRay.intersectObjects(trackCollisionMeshes, false);
+    if (hits.length === 0) {
+        return true;
+    }
+
+    for (const hit of hits) {
+        if (Math.abs(hit.face.normal.y) < 0.4) {
+            return false;
+        }
+    }
+
+    return true;
 };
 
 const updateGravity = (dt) => {
@@ -117,6 +194,22 @@ const updateFollowCamera = () => {
 };
 
 const updateControls = (dt) => {
+    if (godModeEnabled) {
+        const forwardInput = (controls.up ? 1 : 0) - (controls.down ? 1 : 0);
+        const strafeInput = (controls.left ? 1 : 0) - (controls.right ? 1 : 0);
+
+        if (forwardInput !== 0) {
+            kartRoot.translateZ(forwardInput * godModeSpeed * dt);
+        }
+        if (strafeInput !== 0) {
+            kartRoot.translateX(strafeInput * godModeSpeed * dt);
+        }
+
+        // Keep movement locked to horizontal plane while in god mode.
+        kartRoot.position.y = Math.max(kartRoot.position.y, getSupportHeight(kartRoot.position));
+        return;
+    }
+
     if (controls.up) {
         forwardSpeed = Math.min(maxForwardSpeed, forwardSpeed + (acceleration * dt));
     } else if (controls.down) {
@@ -131,17 +224,32 @@ const updateControls = (dt) => {
         kartRoot.rotation.y += turnInput * turnSpeed * dt * speedRatio;
     }
 
-    kartRoot.translateZ(forwardSpeed * dt);
+    const attemptedMove = new THREE.Vector3(0, 0, forwardSpeed * dt).applyQuaternion(kartRoot.quaternion);
+    const nextPosition = kartRoot.position.clone().add(attemptedMove);
+    if (canMoveTo(nextPosition)) {
+        kartRoot.position.copy(nextPosition);
+    } else {
+        forwardSpeed = 0;
+    }
 };
 
 const animate = () => {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
+    positionLogAccumulator += dt;
     updateControls(dt);
-    updateGravity(dt);
+    if (!godModeEnabled) {
+        updateGravity(dt);
+    }
     updateFollowCamera();
+    if (log_pos && positionLogAccumulator >= 1) {
+        const { x, y, z } = kartRoot.position;
+        console.log(`Kart position: x=${x.toFixed(2)}, y=${y.toFixed(2)}, z=${z.toFixed(2)}`);
+        positionLogAccumulator = 0;
+    }
     renderer.render(scene, cameras[activeCameraKey]);
 };
+
 
 animate();
 
@@ -158,6 +266,12 @@ window.addEventListener('keydown', (event) => {
 
     if (key === 'c') {
         activeCameraKey = activeCameraKey === 'top' ? 'follow' : 'top';
+        return;
+    }
+    if (key === 'v') {
+        godModeEnabled = !godModeEnabled;
+        forwardSpeed = 0;
+        verticalVelocity = 0;
         return;
     }
 
