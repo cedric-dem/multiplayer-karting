@@ -1,4 +1,5 @@
-import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070f);
@@ -19,11 +20,16 @@ const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
 keyLight.position.set(2, 4, 5);
 scene.add(keyLight);
 
-const sphereGeometry = new THREE.SphereGeometry(1, 48, 32);
-const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x3ea6ff, metalness: 0.2, roughness: 0.35 });
-const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-sphere.position.set(0, 1.2, 0);
-scene.add(sphere);
+const loader = new GLTFLoader();
+const sphereRoot = new THREE.Group();
+sphereRoot.position.set(0, 1.2, 0);
+scene.add(sphereRoot);
+
+loader.load('models/go_kart.glb', (gltf) => {
+    const sphere = gltf.scene;
+    sphere.scale.setScalar(0.01);
+    sphereRoot.add(sphere);
+});
 
 const cubeGeometry = new THREE.BoxGeometry(1.6, 1.6, 1.6);
 const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xffa24d, metalness: 0.1, roughness: 0.55 });
@@ -33,7 +39,7 @@ scene.add(cube);
 
 const animate = () => {
     requestAnimationFrame(animate);
-    sphere.rotation.y += 0.006;
+    sphereRoot.rotation.y += 0.006;
     cube.rotation.x += 0.004;
     cube.rotation.y += 0.005;
     renderer.render(scene, camera);
