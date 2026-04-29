@@ -9,7 +9,7 @@ topCamera.position.set(0, 12, 14);
 topCamera.lookAt(0, 0, 0);
 
 const followCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-const followOffset = new THREE.Vector3(0, 3, 6);
+const followOffset = new THREE.Vector3(0, 3, -6);
 const followLookOffset = new THREE.Vector3(0, 1.5, 0);
 
 const cameras = {
