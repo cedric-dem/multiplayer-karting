@@ -126,9 +126,9 @@ const updateControls = (dt) => {
     }
 
     const turnInput = (controls.left ? 1 : 0) - (controls.right ? 1 : 0);
-    if (turnInput !== 0) {
+    if (turnInput !== 0 && forwardSpeed > 0) {
         const speedRatio = forwardSpeed / maxForwardSpeed;
-        kartRoot.rotation.y += turnInput * turnSpeed * dt * (0.3 + speedRatio);
+        kartRoot.rotation.y += turnInput * turnSpeed * dt * speedRatio;
     }
 
     kartRoot.translateZ(forwardSpeed * dt);
