@@ -4,9 +4,19 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070f);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 12, 14);
-camera.lookAt(0, 0, 0);
+const topCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+topCamera.position.set(0, 12, 14);
+topCamera.lookAt(0, 0, 0);
+
+const followCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+const followOffset = new THREE.Vector3(0, 3, 6);
+const followLookOffset = new THREE.Vector3(0, 1.5, 0);
+
+const cameras = {
+    top: topCamera,
+    follow: followCamera,
+};
+let activeCameraKey = 'top';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -61,16 +71,16 @@ const getSupportHeight = (position) => {
         const halfWidth = obstacle.scale.x * 0.5;
         const halfDepth = obstacle.scale.z * 0.5;
 
-        const isWithinX = Math.abs(position.x - obstacle.position.x) <= (halfWidth + kartRadiusXZ);
-        const isWithinZ = Math.abs(position.z - obstacle.position.z) <= (halfDepth + kartRadiusXZ);
+    const isWithinX = Math.abs(position.x - obstacle.position.x) <= (halfWidth + kartRadiusXZ);
+    const isWithinZ = Math.abs(position.z - obstacle.position.z) <= (halfDepth + kartRadiusXZ);
 
-        if (isWithinX && isWithinZ) {
-            const obstacleTop = obstacle.position.y + (obstacle.scale.y * 0.5);
-            supportHeight = Math.max(supportHeight, obstacleTop);
-        }
-    });
+    if (isWithinX && isWithinZ) {
+        const obstacleTop = obstacle.position.y + (obstacle.scale.y * 0.5);
+        supportHeight = Math.max(supportHeight, obstacleTop);
+    }
+});
 
-    return supportHeight;
+return supportHeight;
 };
 
 const updateGravity = (dt) => {
@@ -84,17 +94,34 @@ const updateGravity = (dt) => {
     }
 };
 
+const updateFollowCamera = () => {
+    const worldOffset = followOffset.clone().applyQuaternion(kartRoot.quaternion);
+    followCamera.position.copy(kartRoot.position).add(worldOffset);
+
+    const lookTarget = kartRoot.position.clone().add(followLookOffset);
+    followCamera.lookAt(lookTarget);
+};
+
 const animate = () => {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
     updateGravity(dt);
-    renderer.render(scene, camera);
+    updateFollowCamera();
+    renderer.render(scene, cameras[activeCameraKey]);
 };
 
 animate();
 
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    Object.values(cameras).forEach((camera) => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'c') {
+        activeCameraKey = activeCameraKey === 'top' ? 'follow' : 'top';
+    }
 });
