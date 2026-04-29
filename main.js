@@ -131,7 +131,7 @@ const updateControls = (dt) => {
         kartRoot.rotation.y += turnInput * turnSpeed * dt * (0.3 + speedRatio);
     }
 
-    kartRoot.translateZ(-forwardSpeed * dt);
+    kartRoot.translateZ(forwardSpeed * dt);
 };
 
 const animate = () => {
